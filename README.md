@@ -1,4 +1,5 @@
-#Python Project Collection
+Python Project Collection
+
 Welcome to my Python Project Collection, a dynamic repository where I showcase my diverse range of Python-based applications, utilities, and scripts. This repository is a treasure trove for developers, data scientists, and technology enthusiasts exploring innovative solutions and coding practices in Python.
 
 Features:

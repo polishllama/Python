@@ -1,0 +1,86 @@
+import random
+import math
+
+# Funkcja obliczająca odległość euklidesową między dwoma punktami
+def odleglosc_euklidesowa(punkt1, punkt2):
+    return math.sqrt((punkt1[0] - punkt2[0])**2 + (punkt1[1] - punkt2[1])**2)
+
+# Funkcja do wykonywania K-Srednich
+def k_srednie(data, k, max_iterations=100):
+    #Inicjalizacja centroidów losowo
+    centroids = random.sample(data, k)
+    
+    for _ in range(max_iterations):
+        # Przypisanie każdego punktu do najbliższego centroidu
+        clusters = [[] for _ in range(k)]
+        for punkt in data:
+            odleglosc = [odleglosc_euklidesowa(punkt, centroid) for centroid in centroids]
+            najblizszy_centroid = odleglosc.index(min(odleglosc))
+            clusters[najblizszy_centroid].append(punkt)
+        
+        # Aktualizowanie centroidów do średniej punktów w każdym klastrze
+        new_centroids = [(sum(p[0] for p in cluster) / len(cluster), 
+                          sum(p[1] for p in cluster) / len(cluster)) if cluster else centroids[i]
+                         for i, cluster in enumerate(clusters)]
+        
+        # Sprawdzanie zbieżności
+        if new_centroids == centroids:
+            break
+        
+        centroids = new_centroids
+    
+    return clusters, centroids
+
+# Funkcja do obliczania Within-Cluster-Sum-of-Squares (WCSS)
+def obliczanie_wcss(clusters):
+    wcss = 0
+    for cluster in clusters:
+        cluster_center = (sum(p[0] for p in cluster) / len(cluster), 
+                          sum(p[1] for p in cluster) / len(cluster))
+        wcss += sum(odleglosc_euklidesowa(punkt, cluster_center)**2 for punkt in cluster)
+    return wcss
+
+# Funkcja do tworzenia text-based plot
+def wyswietlanie_text_plot(data, clusters, centroids):
+    plot_size = 20
+    plot = [[' ' for _ in range(plot_size)] for _ in range(plot_size)]
+
+    # Oznaczanie punktów na wykresie
+    for punkt in data:
+        x, y = punkt
+        plot[int(y * plot_size / 100)][int(x * plot_size / 100)] = '.'
+
+    # Zaznaczanie centroidów na wykresie
+    for centroid in centroids:
+        x, y = centroid
+        plot[int(y * plot_size / 100)][int(x * plot_size / 100)] = 'X'
+
+    # Wyświetlanie wykresu
+    for row in reversed(plot):
+        print(' '.join(row))
+
+# Generowanie 300 losowych punktów w płaszczyźnie x, y
+random.seed(42)  # Ustawianie warunków dla reprodukowalności
+data = [(random.uniform(0, 100), random.uniform(0, 100)) for _ in range(300)]
+
+# Znalezienie optymalnej liczby skupisk przy użyciu WCSS
+min_clusters = 1
+max_clusters = 8
+wartosci_wcss = []
+
+for k in range(min_clusters, max_clusters + 1):
+    clusters, centroids = k_srednie(data, k)
+    wcss = obliczanie_wcss(clusters)
+    wartosci_wcss.append(wcss)
+
+optimal_clusters = wartosci_wcss.index(min(wartosci_wcss)) + min_clusters
+
+# Przeprowadzenie grupowania z optymalną liczbą skupień
+final_clusters, final_centroids = k_srednie(data, optimal_clusters)
+
+# Wyświetlanie optymalnej liczby skupień
+print(f"Optymalna liczba skupień: {optimal_clusters}")
+print(final_centroids)
+
+# Wyświetlanie text-based plot
+wyswietlanie_text_plot(data, final_clusters, final_centroids)

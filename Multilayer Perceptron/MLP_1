@@ -1,0 +1,144 @@
+import csv
+import random
+import numpy as np
+
+# Funkcja ładowania i wstępnego przetwarzania zbioru danych
+def ładowanie_pliku(nazwa_pliku):
+    with open(nazwa_pliku, 'r') as plik:
+        ładowanie_csv = csv.reader(plik)
+        zbiór_danych = list(ładowanie_csv)[1:]  # Pominięcie nagłówka
+
+    for row in zbiór_danych:
+        row[1:5] = [float(x) for x in row[1:5]]  # Konwersja parametrów na float
+        if row[5] == "Iris-setosa":
+            row[5] = 0
+        elif row[5] == "Iris-versicolor":
+            row[5] = 1
+        else:
+            row[5] = 2  # Iris-virginica
+
+    random.shuffle(zbiór_danych)
+    feature = [row[1:5] for row in zbiór_danych]
+    label = [row[5] for row in zbiór_danych]
+
+    return feature, label
+
+# Podział zbioru danych na zbiór treningowy i testowy
+def Podział_zbioru_danych(feature, label, trening_ratio=0.8): # wybór % jaki ma się znaleźć w danych treningowych
+    trening_size = int(len(feature) * trening_ratio)
+    trening_feature = feature[:trening_size]
+    trening_label = label[:trening_size]
+    test_feature = feature[trening_size:]
+    test_label = label[trening_size:]
+
+    return trening_feature, trening_label, test_feature, test_label
+
+# Klasa MLP z dodatkowymi warstwami ukrytymi i aktywacją ReLU
+class MultiLayerPerceptron:
+    def __init__(self, wielkosc_wejsciowa, niewidoczny_rozmiar1, niewidoczny_rozmiar2, wielkosc_wyjsciowa, rozkład_wag):
+        # Inicjalizacja wag za pomocą inicjalizacji He dla ReLU
+        self.rozkład_wag = rozkład_wag
+        self.wagi = {
+            "W1": np.random.randn(wielkosc_wejsciowa, niewidoczny_rozmiar1) * np.sqrt(2. / wielkosc_wejsciowa),
+            "b1": np.zeros((1, niewidoczny_rozmiar1)),
+            "W2": np.random.randn(niewidoczny_rozmiar1, niewidoczny_rozmiar2) * np.sqrt(2. / niewidoczny_rozmiar1),
+            "b2": np.zeros((1, niewidoczny_rozmiar2)),
+            "W3": np.random.randn(niewidoczny_rozmiar2, wielkosc_wyjsciowa) * np.sqrt(2. / niewidoczny_rozmiar2),
+            "b3": np.zeros((1, wielkosc_wyjsciowa))
+        }
+
+    def _relu(self, x):
+        return np.maximum(0, x)
+
+    def _pochodna_relu(self, x):
+        return (x > 0) * 1
+
+    def _sigmoid(self, x):
+        return 1 / (1 + np.exp(-x))
+
+    def forward_pass(self, dane_wejściowe):
+        # Forward pass przez dwie warstwy ukryte i jedną warstwę wyjściową
+        self.warstwa1 = self._relu(np.dot(dane_wejściowe, self.wagi["W1"]) + self.wagi["b1"])
+        self.warstwa2 = self._relu(np.dot(self.warstwa1, self.wagi["W2"]) + self.wagi["b2"])
+        wynik = self._sigmoid(np.dot(self.warstwa2, self.wagi["W3"]) + self.wagi["b3"])
+        return wynik
+
+    def backward_pass(self, dane_wejściowe, label, wynik, współczynnik_uczenia):
+        # Backward pass z regularyzacją L2
+        wynik_błąd = label - wynik
+        wynik_delta = wynik_błąd * wynik * (1 - wynik)
+
+        warstwa2_błąd = np.dot(wynik_delta, self.wagi["W3"].T)
+        warstwa2_delta = warstwa2_błąd * self._pochodna_relu(self.warstwa2)
+
+        warstwa1_błąd = np.dot(warstwa2_delta, self.wagi["W2"].T)
+        warstwa1_delta = warstwa1_błąd * self._pochodna_relu(self.warstwa1)
+
+        # Aktualizacja wag za pomocą regularyzacji L2
+        self.wagi["W3"] -= (współczynnik_uczenia * np.dot(self.warstwa2.T, wynik_delta) + self.rozkład_wag * self.wagi["W3"])
+        self.wagi["b3"] -= współczynnik_uczenia * np.sum(wynik_delta, axis=0, keepdims=True)
+
+        self.wagi["W2"] -= (współczynnik_uczenia * np.dot(self.warstwa1.T, warstwa2_delta) + self.rozkład_wag * self.wagi["W2"])
+        self.wagi["b2"] -= współczynnik_uczenia * np.sum(warstwa2_delta, axis=0, keepdims=True)
+
+        self.wagi["W1"] -= (współczynnik_uczenia * np.dot(dane_wejściowe.T, warstwa1_delta) + self.rozkład_wag * self.wagi["W1"])
+        self.wagi["b1"] -= współczynnik_uczenia * np.sum(warstwa1_delta, axis=0, keepdims=True)
+
+    def trening(self, trening_feature, trening_label, iteracje, współczynnik_uczenia):
+        for iteracja in range(iteracje):
+            for i in range(len(trening_feature)):
+                wynik = self.forward_pass(np.array([trening_feature[i]]))
+                self.backward_pass(np.array([trening_feature[i]]), np.array([[trening_label[i]]]), wynik, współczynnik_uczenia)
+
+    def test(self, test_feature, test_label):
+        predykcje = []
+        for feature in test_feature:
+            wynik = self.forward_pass(np.array([feature]))
+            predykcje.append(wynik[0][0])
+
+        mse = np.mean((np.array(predykcje) - np.array(test_label)) ** 2)
+        korelacja = np.corrcoef(predykcje, test_label)[0, 1]
+
+        return mse, korelacja, predykcje
+
+# Function to prepare labels for One-vs-All approach
+def prepare_one_vs_all_labels(label, class_index):
+    return [1 if label == class_index else 0 for label in label]
+
+# Główny blok wykonawczy
+nazwa_pliku = 'C:/Users/wojci/Downloads/Iris.csv'  # Zaktualizuj z poprawną ścieżką pliku
+feature, label = ładowanie_pliku(nazwa_pliku)
+trening_feature, trening_label, test_feature, test_label = Podział_zbioru_danych(feature, label)
+
+# Przygotowanie labeli dla każdego z trzech klasyfikatorów
+labels_setosa = prepare_one_vs_all_labels(trening_label, 0)
+labels_versicolor = prepare_one_vs_all_labels(trening_label, 1)
+labels_virginica = prepare_one_vs_all_labels(trening_label, 2)
+
+# Trening trzech oddzielnych modeli MLP
+mlp_setosa = MultiLayerPerceptron(wielkosc_wejsciowa=4, niewidoczny_rozmiar1=10, niewidoczny_rozmiar2=10, wielkosc_wyjsciowa=1, rozkład_wag=0.01)
+mlp_setosa.trening(trening_feature, labels_setosa, iteracje=1000, współczynnik_uczenia=0.01)
+
+mlp_versicolor = MultiLayerPerceptron(wielkosc_wejsciowa=4, niewidoczny_rozmiar1=10, niewidoczny_rozmiar2=10, wielkosc_wyjsciowa=1, rozkład_wag=0.01)
+mlp_versicolor.trening(trening_feature, labels_versicolor, iteracje=1000, współczynnik_uczenia=0.01)
+
+mlp_virginica = MultiLayerPerceptron(wielkosc_wejsciowa=4, niewidoczny_rozmiar1=10, niewidoczny_rozmiar2=10, wielkosc_wyjsciowa=1, rozkład_wag=0.01)
+mlp_virginica.trening(trening_feature, labels_virginica, iteracje=1000, współczynnik_uczenia=0.01)
+
+# Funkcja do testowania modeli z podejściem "jeden vs. wszystkie
+def test_one_vs_all(models, test_features):
+    predictions = []
+    for feature in test_features:
+        outputs = [model.forward_pass(np.array([feature]))[0][0] for model in models]
+        predicted_class = np.argmax(outputs)
+        predictions.append(predicted_class)
+    return predictions
+
+# Testowanie wszystkich trzech modeli
+models = [mlp_setosa, mlp_versicolor, mlp_virginica]
+predictions = test_one_vs_all(models, test_feature)
+
+# Obliczanie dokładności lub innych wskaźników oceny
+correct_predictions = sum(pred == actual for pred, actual in zip(predictions, test_label))
+accuracy = correct_predictions / len(test_label)
+print("Accuracy:", accuracy)

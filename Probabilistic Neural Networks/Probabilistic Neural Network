@@ -1,0 +1,100 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+class KMeans:
+    """
+    Klasa KMeans implementuje algorytm k-średnich dla grupowania danych.
+
+    Atrybuty:
+        liczba_klastrow (int): Liczba klastrów do wygenerowania.
+        max_iter (int): Maksymalna liczba iteracji algorytmu.
+        centroidy (np.array): Aktualne położenie centroidów klastrów.
+    """
+    def __init__(self, liczba_klastrow, max_iter=100):
+        self.liczba_klastrow = liczba_klastrow
+        self.max_iter = max_iter
+        self.centroidy = None
+
+    def inicjalizuj_centroidy(self, dane):
+        """Inicjalizuje centroidy jako losowe punkty z danych."""
+        np.random.seed(0)
+        self.centroidy = dane[np.random.choice(dane.shape[0], self.liczba_klastrow, replace=False)]
+
+    def przydziel_klastry(self, dane):
+        """Przydziela każdy punkt danych do najbliższego centroidu."""
+        dystanse = np.sqrt(((dane - self.centroidy[:, np.newaxis])**2).sum(axis=2))
+        return np.argmin(dystanse, axis=0)
+
+    def aktualizuj_centroidy(self, dane, etykiety):
+        """Aktualizuje położenie centroidów na podstawie średniej punktów w klastrach."""
+        nowe_centroidy = np.array([dane[etykiety == i].mean(axis=0) for i in range(self.liczba_klastrow)])
+        return nowe_centroidy
+
+    def dopasuj(self, dane):
+        """Dopasowuje model k-średnich do danych."""
+        self.inicjalizuj_centroidy(dane)
+        for _ in range(self.max_iter):
+            etykiety_klastrow = self.przydziel_klastry(dane)
+            nowe_centroidy = self.aktualizuj_centroidy(dane, etykiety_klastrow)
+            if np.all(nowe_centroidy == self.centroidy):
+                break
+            self.centroidy = nowe_centroidy
+        return etykiety_klastrow
+
+
+class SiecNeuronowaPNN:
+    """
+    Klasa SiecNeuronowaPNN implementuje probabilistyczną sieć neuronową dla klasyfikacji danych.
+
+    Atrybuty:
+        sigma (float): Parametr 'rozmycia' dla funkcji Gaussa.
+        klasy (np.array): Unikalne klasy w danych.
+        dane_klas (dict): Słownik przechowujący dane dla każdej klasy.
+    """
+    def __init__(self, sigma=1.0):
+        self.sigma = sigma
+        self.klasy = None
+        self.dane_klas = {}
+
+    def dopasuj(self, dane, etykiety):
+        """Trenuje sieć na podstawie danych i ich etykiet."""
+        self.klasy = np.unique(etykiety)
+        for klasa in self.klasy:
+            self.dane_klas[klasa] = dane[etykiety == klasa]
+
+    def funkcja_gaussa(self, odleglosc):
+        """Oblicza wartość funkcji Gaussa dla danej odległości."""
+        return (1 / (self.sigma * np.sqrt(2 * np.pi))) * np.exp(-odleglosc**2 / (2 * self.sigma**2))
+    
+    def przewiduj_prawdopodobienstwa(self, x):
+        """Oblicza prawdopodobieństwo przynależności punktu x do każdej z klas."""
+        prawdopodobienstwa = {}
+        for klasa in self.klasy:
+            dystanse = np.sqrt(np.sum((self.dane_klas[klasa] - x)**2, axis=1))
+            wartosci_gaussa = self.funkcja_gaussa(dystanse)
+            prawdopodobienstwa[klasa] = np.mean(wartosci_gaussa)
+        return prawdopodobienstwa
+
+
+# Generowanie losowych danych dla trzech kształtów: trójkąty, koła i krzyżyki.
+num_samples = 100  # Liczba próbek na klasę
+trojkaty = np.random.rand(num_samples, 2) + np.array([0, 1])
+kolka = np.random.rand(num_samples, 2) + np.array([1, 1])
+krzyzyki = np.random.rand(num_samples, 2) + np.array([0.5, 0.5])
+dane = np.vstack((trojkaty, kolka, krzyzyki))
+etykiety = np.array([0] * num_samples + [1] * num_samples + [2] * num_samples)
+
+# Klastrowanie danych metodą k-średnich.
+k_srednie = KMeans(liczba_klastrow=3)
+etykiety_klastrow = k_srednie.dopasuj(dane)
+
+# Trenowanie sieci PNN na sklastrowanych danych.
+siec_PNN = SiecNeuronowaPNN(sigma=0.1)
+siec_PNN.dopasuj(dane, etykiety_klastrow)
+
+# Testowanie sieci PNN dla nowego punktu danych (trójkąt).
+nowy_trojkat = np.array([0.1, 1.1])
+prawdopodobienstwa_klastrow = siec_PNN.przewiduj_prawdopodobienstwa(nowy_trojkat)
+
+# Wypisywanie prawdopodobieństw przynależności nowego punktu do klastrów.
+print(prawdopodobienstwa_klastrow)
